@@ -9,6 +9,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Picqer\Financials\Exact\ApiException;
 use Picqer\Financials\Exact\Connection;
 
 class ConnectionTest extends TestCase
@@ -48,6 +49,40 @@ class ConnectionTest extends TestCase
         $connection->get('crm/Accounts');
 
         $this->assertStringContainsString((string) $divisionNumber, $mockHandler->getLastRequest()->getUri()->__toString());
+    }
+
+    public function testExceptionOccuredHandler(): void
+    {
+        $mockHandler = new MockHandler([
+            new Response(200, [], json_encode((object) [])),
+            new Response(404, [], json_encode((object) [])),
+        ]);
+
+        $client = new Client(['handler' => HandlerStack::create($mockHandler)]);
+
+        $connection = new Connection();
+        $connection->setClient($client);
+
+        $connection->setDivision(4000);
+        $connection->setAccessToken('1234567890');
+        $connection->setTokenExpires(time() + 60);
+
+        $callbackMock = $this->getMockBuilder(\stdClass::class)
+            ->addMethods(['__invoke'])
+            ->getMock();
+
+        $callbackMock->expects($this->once())
+            ->method('__invoke')
+            ->with($this->isInstanceOf(ApiException::class));
+
+        $connection->setExceptionOccurredCallback($callbackMock);
+
+        $connection->get('/crm/Accounts'); // First response of mock handler
+
+        try {
+            $connection->get('/crm/Accounts'); // Second response of mock handler
+        } catch (ApiException $exception) {
+        }
     }
 
     public function endpointsThatDontUseDivisionInUrl(): array
